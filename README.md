@@ -1,135 +1,167 @@
-# Inkpath
+# Inkpath — Xournal++ 图片转可编辑笔迹（Windows 增强分支）
 
-<div id="badges">
-<img src="https://forthebadge.com/images/badges/made-with-c.svg" alt="C badge" height="30px"/>
-<img src="https://forthebadge.com/images/badges/powered-by-energy-drinks.svg" alt="Energy drink badge" height="30px"/>
-<img src="https://forthebadge.com/images/badges/60-percent-of-the-time-works-every-time.svg" alt="60 percent badge" height="30px"/>
-</div>
+> 基于 [WillNilges/inkpath](https://github.com/WillNilges/inkpath) 改进的社区分支。项目仓库：[ERROR0cai/inkpath](https://github.com/ERROR0cai/inkpath) · [dev 分支](https://github.com/ERROR0cai/inkpath/tree/dev) · [Releases](https://github.com/ERROR0cai/inkpath/releases)。
+>
+> 主要在 **Windows / MSYS2 MINGW64 / OpenCV 5 / Lua 5.5** 环境下进行开发与编译，在**Xournalpp 1.3.8版本**测试基本成功。Linux 原有脚本保留，但该分支的 Linux 构建与运行兼容性尚未系统验证。
 
-If you're anything like me, you're a ~~huge nerd~~ engineering major who enjoys
-working out problems both on whiteboards and digitally. You might also
-have six million photos of your whiteboard work trapped on your phone
-or in your Google Drive with no good way to easily group them in with
-your other notes.
+## 项目介绍
 
-<p align="center">
-<!-- ![Makerfaire 2021 Card](https://user-images.githubusercontent.com/42927786/147401085-94773933-e4a3-4039-97e6-91cf2ea1ee6c.png) -->
-  <img src="https://user-images.githubusercontent.com/42927786/147401085-94773933-e4a3-4039-97e6-91cf2ea1ee6c.png" alt="Makerfaire 2021 Card" width="400px" style="display: block; margin: 0 auto"/>
+Inkpath 将白板、黑板、纸面手写笔记的照片或截图转成 Xournal++ 中可单独选择、删除和编辑的**笔迹路径**，而不是插入一张不可编辑的图片。它是基于图像处理的笔迹提取工具，**不是 OCR 或手写文字识别器**；生成的路径不保证符合真实笔顺或准确恢复每个字符的笔画数。
 
-</p>
+本分支保留上游图像转笔迹的基本目标，重点增加运行时参数配置、Windows 剪贴板导入、去噪、诊断，以及可切换的骨架图重建算法。
 
-Inkpath is a project designed to crunch those whiteboard photos into easily
-editable [Xournal++](https://github.com/xournalpp/xournalpp) note files so that you can
-drop your whiteboard scrawlings directly into your lecture notes. Convenient!
+## 相对于上游的主要变化
 
-The project consists of a lua script and a shared object library written in C++
-statically linked with some OpenCV utils. The project now uses OpenCV in place
-of Autotrace to perform an Otsu Threshold. The thresholded image is then inverted,
-and skeletonized, producing the centerline of each individual object in the image
-(which at this point should be just markings). The resulting image is then scanned
-for contours. These contours are pushed onto the lua stack, and passed to the 
-Xournal++ API. Unlike the previous implementation, this operates purely on rasters.
+| 功能 | 本分支实现 |
+| --- | --- |
+| 运行时配置 | 新增 `plugin/config.ini`；C++ 和 Lua 在导入时读取相关配置，无须为普通参数调整重编译 |
+| 图结构笔迹重建 | 新增 `src/cv/stroke_graph.cpp`，使用骨架像素图追踪线段、交点方向配对及短断口连接 |
+| 骨架细化 | `ZHANG_SUEN` 与旧 `MORPH` 方法可选 |
+| 回退模式 | `reconstruction.mode = CONTOUR` 可选择旧轮廓提取方法 |
+| 断口修复 | `gap_enabled`、最大距离、方向角、折角和局部尺度约束；GRAPH 模式不使用旧形态学闭运算 |
+| 去噪 | 骨架连通域的保守去噪、邻近有效笔迹保护和局部密度自适应 |
+| 诊断 | 可输出各处理阶段的图像，便于区分阈值化、细化、去噪或修复产生的问题 |
+| Windows 剪贴板 | 通过 PowerShell 辅助脚本将剪贴板图像导出后转换 |
+| 导入位置 | 可配置页面缩放、偏移，以及导入当前页或下一页 |
+| 背景极性 | 自动检测或在菜单中强制选择白底黑字、黑底白字 |
 
-## Installation and Usage
+上述算法均属于几何启发式处理；“交点配对”不等于识别文字，也不能保证 X、Z、Q 或相邻汉字绝不误连。
 
-Requires Xournalpp >=1.2.0
+## Windows 安装（使用已构建的发行包）
 
-Inkpath is packaged as a statically-linked `.so` file coupled with a Lua script,
-so you should be able to download the release from the [releases page](https://github.com/WillNilges/inkpath/releases)
-and have it Just Work™.
+1. 在 [Releases](https://github.com/ERROR0cai/inkpath/releases) 下载本分支提供的 **Windows 插件二进制包**（如发行版已附带）。GitHub 自动生成的 `Source code (zip)` **不是**可直接安装的 DLL 包。
+2. 完全退出 Xournal++。
+3. 将发行包中的 `ImageTranscription` 插件文件夹放入 Xournal++ 的 `share/xournalpp/plugins/` 下。安装路径因机器而异，例如 `E:\tools\Xournal++\share\xournalpp\plugins\ImageTranscription`。
+4. 确保文件夹中至少有 `main.lua`、`plugin.ini`、`getLibPath.lua`、`clipboard_to_png.ps1`、`config.ini`、`libinkpath.dll`，以及该 DLL 在目标机器上所需的**兼容运行库 DLL**。
+5. 启动 Xournal++，使用 Inkpath 菜单导入测试图片。
 
-_As of 2022-09-24, the API changes in Xournalpp are merged, but have not made
-it into the package managers. You will probably need to [build xournalpp from source](https://github.com/xournalpp/xournalpp/blob/master/readme/LinuxBuild.md)
-in order to get them._
+**运行库注意事项：** 本分支在 Windows 上动态链接 OpenCV、Lua 和 MinGW 相关运行库。请从相同工具链构建环境收集并测试所需依赖，不能仅把 `libinkpath.dll` 当成完全静态、独立的插件。不要盲目复制整个 `build-new` 构建缓存作为发行包。已有其他版本插件时，先备份原安装目录和 `config.ini`。
 
-_Inkpath is coming to a package manager near you soon™!_
+## Windows 源码构建
 
-### Installation on Windows
+环境：MSYS2 **MINGW64**、CMake、MinGW-w64 C++ 编译器、OpenCV（已使用 5.x 构建）、Lua **5.5** 及相应头文件/链接库。实际依赖名称请以 `CMakeLists.txt` 和本机包管理器为准。确认 `cmake`、`g++`、`pkg-config` 等指向同一 MINGW64 工具链。
 
-1. Download the latest release of [ImageTranscription-win.zip](https://github.com/WillNilges/inkpath/releases/)
+在 **MSYS2 MINGW64** 终端：
 
-2. Unzip the archive and copy ImageTranscription/ to the plugin path:
-
-`C:\Program Files\Xournal++\share\xournalpp\plugins\ImageTranscription`
-
-3. Run install.ps1 to update the user Path
-
-4. Run Xournal++ and enjoy
-
-#### To Uninstall
-
-1. Delete `C:\Program Files\Xournal++\share\xournalpp\plugins\ImageTranscription`
-
-2. Remove environment variable
-
-- Type `Win+R` and type `sysdm.cpl`
-- Go to Advanced > Enviornment Variables > Path > Edit
-- Delete ImageTranscription entry
-- Press OK until all dialogs are closed
-
-## Compiling
-
-### Linux
-
-```
-mkdir build
-cd build
-cmake ..
-make
+```bash
+cd /e/Local/mingw64/inkpath
+cmake -S . -B build-new -G "MinGW Makefiles"
+cmake --build build-new --parallel 4
 ```
 
-### Arch
+编译成功标志：`[100%] Built target inkpath`。DLL 通常位于 `build-new/ImageTranscription/libinkpath.dll`。
 
-```BASH
-# Install dependencies
-pacman -S \
-cmake gtk3 base-devel libxml2 portaudio libsndfile \
-poppler-glib texlive-bin texlive-pictures gettext libzip lua54 lua54-lgi \
-gtksourceview4 wget unzip git tmux
+**注意：** 当前 CMake 已取消构建后自动拷贝 MinGW 运行库 DLL 的步骤。源码构建成功不等于 Windows 插件包依赖已经齐全。部署时应将其与对应的 `plugin/` 文件及必要依赖一起安装。
 
-# Build openCV
-./HACKING/build-opencv.sh
+完全退出 Xournal++ 后，可用 PowerShell 更新已有插件（请根据实际目录修改路径）：
+
+```powershell
+$root = 'E:\Local\mingw64\inkpath'
+$dst  = 'E:\tools\Xournal++\share\xournalpp\plugins\ImageTranscription'
+Copy-Item "$root\build-new\ImageTranscription\libinkpath.dll" "$dst\libinkpath.dll" -Force
+Copy-Item "$root\plugin\main.lua" "$dst\main.lua" -Force
+Copy-Item "$root\plugin\clipboard_to_png.ps1" "$dst\clipboard_to_png.ps1" -Force
+# 如需同步项目默认配置，请先备份已安装的 config.ini：
+# Copy-Item "$root\plugin\config.ini" "$dst\config.ini" -Force
 ```
 
-### Debian
+这段操作适用于**已有完整运行库和插件资源**的安装目录，不能代替首次部署完整依赖。
 
-```BASH
-# Install dependencies
-apt -y install \
-make liblua5.4-dev build-essential pkg-config libglib2.0-dev libpng-dev \
-cmake libgtk-3-dev libpoppler-glib-dev portaudio19-dev libsndfile-dev \
-dvipng texlive libxml2-dev libzip-dev librsvg2-dev gettext lua-lgi \
-libgtksourceview-4-dev git gdb x11-apps wget unzip
-./HACKING/build-opencv.sh $NUMBER_OF_CORES_YOU_HAVE # You'll need sudo to install this
-./HACKING/build-xopp.sh $NUMBER_OF_CORES_YOU_HAVE # You'll probably need sudo to install this too
-make install
+## 使用方法
+
+在 Xournal++ 的 Inkpath 菜单中：
+<img width="594" height="269" alt="image" src="https://github.com/user-attachments/assets/ff6dc59e-f76a-46a6-8219-dc408cf2d472" />
+
+
+- `Inkpath - From image file`：选择 JPG、JPEG、PNG、BMP，按自动极性配置转换；快捷键 `Ctrl+Alt+T`。
+- `Inkpath - Force white background / black strokes`：强制按白底黑笔迹解析。
+- `Inkpath - Force black background / white strokes`：强制按黑底白笔迹解析。
+- `Inkpath - From clipboard image`：Windows 剪贴板图片导入；快捷键 `Ctrl+Alt+G`。剪贴板必须包含系统可识别的**图像**，仅复制图片文件的路径不一定有效。
+
+默认输出行为由 `plugin/config.ini` 中 `[output]` 控制。`next_page = 1` 表示将笔迹加入当前页的下一页；`0` 表示当前页。导入不是 OCR，建议先在测试文档验证位置、笔画拆分和符号保留情况。
+
+## 参数配置
+
+修改的是**已安装插件目录**中的 `config.ini`；修改源码目录中的 `plugin/config.ini` 不会自动同步到已安装版本。保存后，通常下一次导入即读取新配置。
+
+主要配置节如下：
+
+| 节名 | 作用 |
+| --- | --- |
+| `[output]` | 缩放、偏移、最少路径点数和目标页 |
+| `[image]` | 图像最长边缩放与黑白极性 |
+| `[perspective]` | 可选透视校正；`passes=0` 时跳过 |
+| `[threshold]` | 高斯模糊与自适应二值化 |
+| `[repair]` | 旧轮廓模式的形态学断口闭运算 |
+| `[skeleton]` | 旧形态学骨架使用的结构元素 |
+| `[contours]` | 旧轮廓检索和轮廓近似选项 |
+| `[diagnostics]` | 是否保存中间图像和输出处理报告 |
+| `[denoise]` | 保守连通域清理、邻近保护和密度去噪 |
+| `[reconstruction]` | GRAPH/CONTOUR、细化、交点配对与断口连接 |
+
+示例（只展示关键选项，并非覆盖你当前设置的建议）：
+
+```ini
+[reconstruction]
+mode = GRAPH
+thinning = ZHANG_SUEN
+gap_enabled = 1
+max_gap = 7
+junction_pairing = 1
+character_guard = 1
 ```
 
-<img src="https://forthebadge.com/images/badges/works-on-my-machine.svg" alt="C badge" height="30px"/>
+使用 `GRAPH` 时跳过旧 `[repair]` 闭运算，使用 `CONTOUR` 时不执行图结构笔迹重建。`max_gap` 在当前配置解析器中有效范围为 **0～50**；超出会报告 `Out-of-range value for reconstruction.max_gap`。
 
-### Windows
+两个常见的参数关联：
 
-1. Install MSYS2
+- `GRAPH` 模式的最终最少点数同时受 `reconstruction.min_points` 与 `output.min_stroke_points` 限制。
+- 开启密度自适应去噪时，有效锚点像素阈值至少为 `max(anchor_min_pixels, sparse_max_pixels + 1)`；关闭时不应让稀疏区配置干扰普通去噪判定。
 
-2. Open MSYS2 MINGW64 shell
+完整取值范围和参数联动说明请阅读 [`plugin/config.ini`](plugin/config.ini) 的中文注释。
 
-3. Install dependencies
+## 诊断与故障排查
 
+把 `[diagnostics] enabled` 设为 `1`，重新导入图像。诊断结果通常位于 `%TEMP%\InkpathDiagnostics`：
+
+| 文件 | 意义 |
+| --- | --- |
+| `01_threshold.png` | 二值化结果 |
+| `02_repaired.png` | 旧断口闭运算之后的结果（GRAPH 模式通常跳过该步骤） |
+| `03_skeleton.png` | 骨架细化结果 |
+| `04_denoised.png` | 连通域去噪结果 |
+| `05_removed_mask.png` | 去噪删除像素的掩码 |
+| `06_graph_added_mask.png` | GRAPH 模式新增断口连接像素的掩码 |
+| `07_reconstructed.png` | GRAPH 模式的重建中心线示意 |
+
+如果小数点、上下标丢失，先检查阈值化与 `05_removed_mask.png`；若出现跨字符误连，检查 `06_graph_added_mask.png` 并酌情降低断口距离、角度容忍度或关闭 `gap_enabled`；如果仅对图重建结果不满意，可以用 `reconstruction.mode=CONTOUR` 对照旧模式。
+
+**其他已知限制：** 交点配对、断口连接和字符尺度保护均属启发式规则；可能产生额外碎线、错误连接或与人工书写笔顺不同的路径。当前以 Windows 为主要验证环境，不保证跨系统 ABI/依赖可直接复用。
+
+## 源码结构
+
+```text
+plugin/
+  main.lua                 # Xournal++ 菜单、文件/剪贴板导入、输出页面
+  clipboard_to_png.ps1     # Windows 剪贴板图像导出
+  config.ini               # 中文详细参数配置
+  plugin.ini               # Xournal++ 插件清单
+  getLibPath.lua           # 上游保留辅助模块
+src/cv/
+  inkpath_config.h         # C++ INI 解析、默认值与参数校验
+  ipcv.cpp, ipcv.h         # 图像二值化、骨架及相关操作
+  quadrangle.cpp           # 透视/四边形检测
+  stroke_graph.cpp         # Zhang–Suen 细化与图结构路径重建
+src/plugin/
+  plugin.cpp, plugin.h     # C++/Lua 插件接口及处理流程
+HACKING/, scripts/        # 上游开发与构建工具
+CMakeLists.txt             # 构建定义
 ```
-pacman -S \
-mingw-w64-x86_64-cmake mingw-w64-x86_64-gtk3 base-devel libxml2 mingw-w64-x86_64-portaudio mingw-w64-x86_64-libsndfile mingw-w64-x86_64-poppler mingw-w64-x86_64-libzip mingw-w64-x86_64-lua53 mingw-w64-x86_64-lua53-lgi mingw-w64-x86_64-gtksourceview4 mingw-w64-x86_64-opencv wget unzip git tmux
-```
 
-4. Launch MSYS2 MINGW64 shell as Administrator, and use `cmake` to build and
-run post-build script to gather dependencies and assemble the plugin
+`.git/`、`.vs/`、`build-new/` 均不是应放进源码发行压缩包的组成部分；其中 `build-new/ImageTranscription/` 可作为打包 Windows 二进制的**素材**，但需独立核实和精简运行依赖。
 
-```
-mkdir build
-cd build
-cmake .. # Use ${MINGW_PREFIX}/bin/cmake if normal cmake doesn't work
-mingw32-make.exe install
-```
+## 上游与许可证
 
-6. Run scripts/win_configure_path.ps1 to update the user Path
+本项目是 [WillNilges/inkpath](https://github.com/WillNilges/inkpath) 的衍生版本，不代表上游官方发布，也不声称是全新独立开发项目。感谢上游作者及 Xournal++、OpenCV 社区。
 
-7. Run Xournal++ and enjoy
+请保留原仓库的 `LICENSE`、源代码许可声明及上游归属信息。仓库当前包含 GNU GPL v2 许可证文本；再分发源码和二进制时应按实际适用许可证履行相应义务，包含必要的源代码或获取途径与版权说明，并核对各动态依赖的许可证。
