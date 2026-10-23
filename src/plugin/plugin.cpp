@@ -1,4 +1,5 @@
 #include "plugin.h"
+#include "../cv/edge_line_filter.h"
 #include <algorithm>
 #include <exception>
 #include <filesystem>
@@ -278,6 +279,11 @@ static int cv_perform_processing_mode(const char* image_path, Inkpath* data, int
     } else {
         outputStrokes = findStrokes(cleanedSkeleton, "", &cfg);
     }
+    inkp::EdgeLineStats edgeLineStats;
+    cv::Mat edgeLineRemoved;
+    outputStrokes=inkp::removeCollinearEdgeGroups(
+        outputStrokes, cleanedSkeleton.cols, cleanedSkeleton.rows, cfg,
+        &edgeLineStats, cfg.diagnosticEnabled == 1 ? &edgeLineRemoved : nullptr);
     if (cfg.diagnosticEnabled == 1) {
         // Count pixels changed by repair; a separate changed-pixel image would
         // be useful later, but these three images capture the core stages.
@@ -293,6 +299,8 @@ static int cv_perform_processing_mode(const char* image_path, Inkpath* data, int
         saveDiagnosticPng(dir / "03_skeleton.png", skeleton);
         saveDiagnosticPng(dir / "04_denoised.png", cleanedSkeleton);
         saveDiagnosticPng(dir / "05_removed_mask.png", removedPixels);
+        if (cfg.edgeLinesEnabled == 1)
+            saveDiagnosticPng(dir / "08_edge_lines_removed.png", edgeLineRemoved);
         if (cfg.strokeMode == "GRAPH") {
             saveDiagnosticPng(dir / "06_graph_added_mask.png", graphAdded);
             cv::Mat rendered(cleanedSkeleton.size(), CV_8UC1, cv::Scalar(255));
@@ -307,6 +315,11 @@ static int cv_perform_processing_mode(const char* image_path, Inkpath* data, int
                << "拓扑初始线段：" << graphStats.initialSegments << "\n"
                << "交点配对：" << graphStats.junctionPairs << "\n"
                << "断口连接：" << graphStats.gapJoins << "\n"
+               << "边缘多段线过滤：" << (cfg.edgeLinesEnabled ? "开启" : "关闭") << "\n"
+               << "候选近似直线段：" << edgeLineStats.candidatePaths << "\n"
+               << "删除连续共线子组数：" << edgeLineStats.removedGroups << "\n"
+               << "删除超长单条笔迹数：" << edgeLineStats.removedSingles << "\n"
+               << "删除笔迹路径数：" << edgeLineStats.removedPaths << "\n"
                << "最终独立笔迹：" << outputStrokes.size() << "\n"
                << "旧闭运算修复：" << (cfg.strokeMode == "CONTOUR" && cfg.bridgeEnabled == 1 ? "开启" : "未使用") << "\n"
                << "邻域尺寸：" << cfg.bridgeKernel << "\n"
@@ -326,6 +339,7 @@ static int cv_perform_processing_mode(const char* image_path, Inkpath* data, int
                << "04_denoised.png：去噪后骨架\n"
                << "05_removed_mask.png：删除像素掩码（白色为删除）";
         if (cfg.strokeMode == "GRAPH") report << "\n06_graph_added_mask.png：新连接像素\n07_reconstructed.png：重建中心线";
+        if(cfg.edgeLinesEnabled)report << "\n08_edge_lines_removed.png：过滤掉的近共线笔迹点";
         data->setDiagnosticReport(report.str());
     }
     data->set(std::move(outputStrokes));

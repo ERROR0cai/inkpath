@@ -418,5 +418,9 @@ CMakeFiles/inkpath.dir/src/plugin/plugin.cpp.obj: \
  E:/tools/msys64/mingw64/include/opencv5/opencv2/video.hpp \
  E:/tools/msys64/mingw64/include/opencv5/opencv2/video/tracking.hpp \
  E:/tools/msys64/mingw64/include/opencv5/opencv2/video/background_segm.hpp \
+ E:/Local/mingw64/inkpath/src/cv/edge_line_filter.h \
+ E:/tools/msys64/mingw64/include/c++/16.2.0/numeric \
+ E:/tools/msys64/mingw64/include/c++/16.2.0/bits/stl_numeric.h \
+ E:/tools/msys64/mingw64/include/c++/16.2.0/pstl/glue_numeric_defs.h \
  E:/tools/msys64/mingw64/include/c++/16.2.0/iterator \
  E:/tools/msys64/mingw64/include/c++/16.2.0/bits/stream_iterator.h

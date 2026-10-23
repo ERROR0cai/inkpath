@@ -49,6 +49,19 @@ struct InkpathConfig {
     int graphMinPoints=2;
     int graphGuardEnabled=1;
     double graphMaxGapRatio=0.18;
+    // Remove groups of nearly collinear disconnected paths (off by default).
+    int edgeLinesEnabled=0;
+    int edgeLinesMargin=80;       // 0 = whole image; positive = border strip
+    int edgeLinesMinSegments=3;
+    int edgeLinesSingleEnabled=1;
+    double edgeLinesSingleMinLength=300.0;
+    double edgeLinesMinTotalLength=180.0;
+    double edgeLinesMinSpan=180.0;
+    double edgeLinesMaxGap=22.0;
+    double edgeLinesMaxOffset=3.0;
+    double edgeLinesMaxAngle=8.0;
+    double edgeLinesMaxDeviation=2.5;
+    int edgeLinesMinSegmentPoints=3;
     int skeletonKernel=3;
     std::string skeletonShape="CROSS";
     std::string retrievalMode="RETR_LIST", chainMode="CHAIN_APPROX_NONE";
@@ -168,6 +181,18 @@ inline InkpathConfig loadInkpathConfig(const std::string& path) {
     c.graphMinPoints=integer("reconstruction.min_points",c.graphMinPoints,2,1000);
     c.graphGuardEnabled=integer("reconstruction.character_guard",c.graphGuardEnabled,0,1);
     c.graphMaxGapRatio=number("reconstruction.max_gap_ratio",c.graphMaxGapRatio,0.01,3);
+    c.edgeLinesEnabled=integer("edge_lines.enabled",c.edgeLinesEnabled,0,1);
+    c.edgeLinesMargin=integer("edge_lines.edge_margin",c.edgeLinesMargin,0,10000);
+    c.edgeLinesMinSegments=integer("edge_lines.min_segments",c.edgeLinesMinSegments,2,1000);
+    c.edgeLinesSingleEnabled=integer("edge_lines.single_enabled",c.edgeLinesSingleEnabled,0,1);
+    c.edgeLinesSingleMinLength=number("edge_lines.single_min_length",c.edgeLinesSingleMinLength,1,100000);
+    c.edgeLinesMinTotalLength=number("edge_lines.min_total_length",c.edgeLinesMinTotalLength,1,100000);
+    c.edgeLinesMinSpan=number("edge_lines.min_span",c.edgeLinesMinSpan,1,100000);
+    c.edgeLinesMaxGap=number("edge_lines.max_gap",c.edgeLinesMaxGap,0,10000);
+    c.edgeLinesMaxOffset=number("edge_lines.max_offset",c.edgeLinesMaxOffset,0,1000);
+    c.edgeLinesMaxAngle=number("edge_lines.max_angle",c.edgeLinesMaxAngle,0,45);
+    c.edgeLinesMaxDeviation=number("edge_lines.max_deviation",c.edgeLinesMaxDeviation,0,100);
+    c.edgeLinesMinSegmentPoints=integer("edge_lines.min_segment_points",c.edgeLinesMinSegmentPoints,2,10000);
     c.skeletonKernel=odd("skeleton.kernel_size",c.skeletonKernel,3,15);
     c.skeletonShape=choice("skeleton.kernel_shape",c.skeletonShape,{"CROSS","RECT","ELLIPSE"});
     c.retrievalMode=choice("contours.retrieval_mode",c.retrievalMode,{"RETR_LIST","RETR_EXTERNAL","RETR_TREE","RETR_CCOMP"});
