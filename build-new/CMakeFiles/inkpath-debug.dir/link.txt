@@ -1,0 +1,3 @@
+E:\tools\msys64\mingw64\bin\cmake.exe -E rm -f CMakeFiles\inkpath-debug.dir/objects.a
+E:\tools\msys64\mingw64\bin\ar.exe qc CMakeFiles\inkpath-debug.dir/objects.a @CMakeFiles\inkpath-debug.dir\objects1.rsp
+E:\tools\msys64\mingw64\bin\c++.exe -O3 -DNDEBUG -Wl,--whole-archive CMakeFiles\inkpath-debug.dir/objects.a -Wl,--no-whole-archive -o debug\inkpath-debug.exe -Wl,--out-implib,ImageTranscription\libinkpath-debug.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\inkpath-debug.dir\linkLibs.rsp

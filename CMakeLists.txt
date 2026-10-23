@@ -25,19 +25,19 @@ file(GLOB DEBUG_SOURCES src/cv/debug/*.cpp)
 # Locate dependent packages
 FIND_PACKAGE(OpenCV REQUIRED)
 INCLUDE_DIRECTORIES(${OpenCV_INCLUDE_DIRS})
-                            
-FIND_PACKAGE(Lua 5.4 REQUIRED)
+
+FIND_PACKAGE(Lua 5.5 REQUIRED)
 INCLUDE_DIRECTORIES(${LUA_INCLUDE_DIR})
 
 # We link OpenCV statically in Linux,
 # but link totally dynamically and redistribute dlls in Windows
 IF(WIN32)
-	# FIXME (wdn): Fix FIND_PACKAGE behavior for Lua on Windows
-	set(LUA_INCLUDE_DIR "C:/msys64/mingw64/include")
-	set(LUA_LIBRARIES "C:/msys64/mingw64/lib")
+    # Lua 5.5 library and headers detected by FindLua
+    ADD_LIBRARY(inkpath SHARED ${CV_SOURCES} ${PLUGIN_SOURCES})
 
-	ADD_LIBRARY(inkpath SHARED ${CV_SOURCES} ${PLUGIN_SOURCES})
-	target_link_libraries(inkpath ${LUA_LIBRARIES}/liblua.a)
+    target_include_directories(inkpath PRIVATE "${LUA_INCLUDE_DIR}")
+
+    target_link_libraries(inkpath PRIVATE "${LUA_LIBRARIES}")
 ELSE()
 	# Compile the CV component of Inkpath separately. This is mostly so that we
 	# can build our debug program and such.
@@ -51,7 +51,7 @@ ELSE()
 ENDIF()
 
 # OpenCV Gets linked the same way for both platforms
-target_link_libraries(inkpath ${OpenCV_LIBRARIES})
+target_link_libraries(inkpath PRIVATE ${OpenCV_LIBRARIES})
 
 
 # Copy the script and manifest into the build artifact
@@ -72,15 +72,6 @@ set_target_properties(inkpath-debug PROPERTIES OUTPUT_NAME "inkpath-debug")
 set_target_properties(inkpath-debug PROPERTIES RUNTIME_OUTPUT_DIRECTORY "debug")
 
 # If cross compiling on Windows copy dependent DLLs
-if(CMAKE_GENERATOR STREQUAL "MinGW Makefiles")
-    add_custom_command(
-        TARGET ${PROJECT_NAME}
-        POST_BUILD
-        COMMAND
-            ldd "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/lib${PROJECT_NAME}.dll" | grep
-            mingw64 | awk "{ print \$3 }" | xargs -I {} cp {}
-            ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
-        COMMENT "Copying ${PROJECT_NAME} dependent MinGW DLLs"
-        VERBATIM
-    )
-endif()
+# Runtime dependencies are already present in
+# build-new/ImageTranscription.
+# Skip automatic copying during incremental builds.

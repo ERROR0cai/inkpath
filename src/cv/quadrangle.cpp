@@ -1,13 +1,16 @@
 #include "ipcv.h"
 
+#include <opencv2/imgproc.hpp>
+#include <opencv2/calib3d.hpp>
+
 namespace inkp {
 
 // Extracts a quadrangle out of an image that is supposed to represent a
 // whiteboard.
-cv::Mat getWhiteboard(cv::Mat image, std::string output_dir) {
+cv::Mat getWhiteboard(cv::Mat image, std::string output_dir, const InkpathConfig* config) {
     // Locate squares in an image most likely to be the whiteboard
     std::vector<std::vector<cv::Point>> goodSquares =
-        filterQuadrangles(image, output_dir);
+        filterQuadrangles(image, output_dir, config);
 
     // If we didn't find any good squares, then we just have to give up, because
     // whatever squares we did find are either totally wrong or encapsulate
@@ -54,7 +57,9 @@ cv::Mat getWhiteboard(cv::Mat image, std::string output_dir) {
 
 // Filter quadrangles for area
 std::vector<std::vector<cv::Point>> filterQuadrangles(cv::Mat image,
-                                                      std::string output_dir) {
+                                                      std::string output_dir, const InkpathConfig* config) {
+    const InkpathConfig defaults;
+    const auto& cfg = config ? *config : defaults;
     // Also check HSV colorspace and try to find more squares.
     // XXX (wdn): We can probably just check HSV. No need to check RGB. Need to
     // do some testing.
@@ -65,8 +70,8 @@ std::vector<std::vector<cv::Point>> filterQuadrangles(cv::Mat image,
     cv::Mat bgr = image.clone();
 
     std::vector<std::vector<cv::Point>> squares;
-    findQuadrangles(bgr, squares);
-    findQuadrangles(hsv, squares);
+    findQuadrangles(bgr, squares, config);
+    findQuadrangles(hsv, squares, config);
 
     // Sort squares by area
     sort(
@@ -82,7 +87,7 @@ std::vector<std::vector<cv::Point>> filterQuadrangles(cv::Mat image,
     for (int i = 0; i < squares.size(); i++) {
         int imgArea = image.rows * image.cols;
         int contourArea = cv::contourArea(squares[i]);
-        if ((contourArea < imgArea * 0.25) || (contourArea > imgArea * 0.90)) {
+        if ((contourArea < imgArea * cfg.quadMinAreaRatio) || (contourArea > imgArea * cfg.quadMaxAreaRatio)) {
             continue;
         }
         goodSquares.push_back(squares[i]);
@@ -109,10 +114,12 @@ std::vector<std::vector<cv::Point>> filterQuadrangles(cv::Mat image,
 
 // https://stackoverflow.com/a/8863060/6095682
 void findQuadrangles(cv::Mat& image,
-                     std::vector<std::vector<cv::Point>>& squares) {
+                     std::vector<std::vector<cv::Point>>& squares, const InkpathConfig* config) {
+    const InkpathConfig defaults;
+    const auto& cfg = config ? *config : defaults;
     // Make a border around the whole image to help with detecting boards who go
     // to the edge of the image
-    int border_width = 10;
+    int border_width = cfg.quadBorderWidth;
     int borderType = cv::BORDER_CONSTANT;
     cv::Scalar value(0, 0, 0);
     copyMakeBorder(image, image, border_width, border_width, border_width,
@@ -120,7 +127,7 @@ void findQuadrangles(cv::Mat& image,
 
     // blur will enhance edge detection
     cv::Mat blurred(image);
-    medianBlur(image, blurred, 9);
+    medianBlur(image, blurred, cfg.quadMedianKernel);
 
     cv::Mat gray0(blurred.size(), CV_8U), gray;
     std::vector<std::vector<cv::Point>> contours;
@@ -131,12 +138,12 @@ void findQuadrangles(cv::Mat& image,
         mixChannels(&blurred, 1, &gray0, 1, ch, 1);
 
         // try several threshold levels
-        const int threshold_level = 2;
+        const int threshold_level = cfg.quadThresholdLevels;
         for (int l = 0; l < threshold_level; l++) {
             // Use Canny instead of zero threshold level!
             // Canny helps to catch squares with gradient shading
             if (l == 0) {
-                Canny(gray0, gray, 10, 20, 3);
+                Canny(gray0, gray, cfg.cannyLow, cfg.cannyHigh, cfg.cannyAperture);
 
                 // Dilate helps to remove potential holes between edge segments
                 dilate(gray, gray, cv::Mat(), cv::Point(-1, -1));
@@ -155,13 +162,13 @@ void findQuadrangles(cv::Mat& image,
                 // to the contour perimeter
                 cv::approxPolyDP(
                     cv::Mat(contours[i]), approx,
-                    cv::arcLength(cv::Mat(contours[i]), true) * 0.02, true);
+                    cv::arcLength(cv::Mat(contours[i]), true) * cfg.quadApproxEpsilon, true);
 
                 // Note: absolute value of an area is used because
                 // area may be positive or negative - in accordance with the
                 // contour orientation
                 if (approx.size() == 4 &&
-                    fabs(cv::contourArea(cv::Mat(approx))) > 1000 &&
+                    fabs(cv::contourArea(cv::Mat(approx))) > cfg.quadMinContourArea &&
                     cv::isContourConvex(cv::Mat(approx))) {
                     double maxCosine = 0;
 
@@ -172,7 +179,7 @@ void findQuadrangles(cv::Mat& image,
                     }
 
                     // XXX (wdn): I could roll the filter function into this one
-                    if (maxCosine < 0.3)
+                    if (maxCosine < cfg.quadMaxAngleCosine)
                         squares.push_back(approx);
                 }
             }

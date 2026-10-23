@@ -1,0 +1,8 @@
+E:/Local/mingw64/inkpath/build-new/CMakeFiles/inkpath.dir
+E:/Local/mingw64/inkpath/build-new/CMakeFiles/inkpath-debug.dir
+E:/Local/mingw64/inkpath/build-new/CMakeFiles/edit_cache.dir
+E:/Local/mingw64/inkpath/build-new/CMakeFiles/rebuild_cache.dir
+E:/Local/mingw64/inkpath/build-new/CMakeFiles/list_install_components.dir
+E:/Local/mingw64/inkpath/build-new/CMakeFiles/install.dir
+E:/Local/mingw64/inkpath/build-new/CMakeFiles/install/local.dir
+E:/Local/mingw64/inkpath/build-new/CMakeFiles/install/strip.dir

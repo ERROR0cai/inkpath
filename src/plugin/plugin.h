@@ -28,11 +28,14 @@ typedef std::vector<std::vector<cv::Point>> StrokeList;
 class Inkpath {
   private:
     StrokeList strokes;
+    std::string diagnosticReport;
 
   public:
     Inkpath() {}
     void set(StrokeList strokes) { this->strokes = strokes; }
     StrokeList get() const { return this->strokes; }
+    void setDiagnosticReport(const std::string& report) { diagnosticReport = report; }
+    const std::string& getDiagnosticReport() const { return diagnosticReport; }
 };
 
 // inkpath identifier for the Lua metatable

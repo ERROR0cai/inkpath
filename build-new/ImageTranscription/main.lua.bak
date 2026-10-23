@@ -1,0 +1,60 @@
+-- Inkpath / Xournal++ - Windows path-adjusted Lua 5.5 plugin
+local loaded = false
+local DLL_PATH = [[E:\tools\Xournal++\share\xournalpp\plugins\ImageTranscription\libinkpath.dll]]
+
+local function inkpathLibraryPath()
+    if package.config:sub(1, 1) == '\\' then
+        return DLL_PATH
+    end
+    return '/usr/share/xournalpp/plugins/ImageTranscription/libinkpath.so'
+end
+
+local function initializeInkpath()
+    if loaded then return end
+    local path = inkpathLibraryPath()
+    local loader, err = package.loadlib(path, 'luaopen_loadInkpath')
+    if not loader then
+        local message = tostring(err or 'unknown DLL loading error')
+        local hex = message:gsub('.', function(ch)
+            return string.format('%02X', string.byte(ch))
+        end)
+        error('INKPATH_DLL_LOAD_FAILED; ERROR_HEX=' .. hex, 0)
+    end
+    loader()
+    loaded = true
+end
+
+function initUi()
+    app.registerUi({
+        ['menu'] = 'Transcribe Image',
+        ['callback'] = 'drawStroke',
+        ['accelerator'] = '<Control><Alt>t',
+        ['toolbarId'] = 'TRANSCRIBE_IMAGE',
+        ['iconName'] = 'xopp-tool-transcribe-image'
+    })
+    print('ImageTranscription registered')
+end
+
+function drawStroke()
+    local path = app.getFilePath({'*.jpg', '*.png', '*.bmp'})
+    if not path or path == '' then return end
+
+    initializeInkpath()
+    local obj = Inkpath(path, 1)
+    local contourCt = obj:getStrokeCount()
+    local scaling_factor = 0.125
+    local strokes = {}
+
+    for i = 0, contourCt - 1 do
+        if obj:getStrokeLength(i) >= 3 then
+            local xs, ys = obj:getStroke(i, scaling_factor)
+            table.insert(strokes, { ['x'] = xs, ['y'] = ys, ['tool'] = 'pen' })
+        end
+    end
+
+    if #strokes > 0 then
+        app.addStrokes({ ['strokes'] = strokes, ['allowUndoRedoAction'] = 'grouped' })
+    end
+    app.refreshPage()
+    print('Image Transcription Complete')
+end
