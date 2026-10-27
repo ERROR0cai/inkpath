@@ -1,3 +1,8 @@
+<img width="3519" height="1209" alt="8a11da3d390a979fe45a8a85b479f397" src="https://github.com/user-attachments/assets/40ac5166-1766-4ca2-80ff-633a199843db" />
+<img width="1882" height="659" alt="image" src="https://github.com/user-attachments/assets/665ad39a-1d00-4e5f-9da6-5286e66b9336" />
+
+
+
 # Inkpath — Xournal++ 图片转可编辑笔迹（Windows 增强分支）
 
 > 基于 [WillNilges/inkpath](https://github.com/WillNilges/inkpath) 改进的社区分支。项目仓库：[ERROR0cai/inkpath](https://github.com/ERROR0cai/inkpath) · [dev 分支](https://github.com/ERROR0cai/inkpath/tree/dev) · [Releases](https://github.com/ERROR0cai/inkpath/releases)。
