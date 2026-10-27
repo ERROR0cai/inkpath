@@ -16,6 +16,7 @@
 #include <lua.hpp>
 // C++ input/output streams
 #include <iostream>
+#include <utility>
 #include <opencv2/core/types.hpp>
 
 #include "../cv/ipcv.h"
@@ -32,8 +33,8 @@ class Inkpath {
 
   public:
     Inkpath() {}
-    void set(StrokeList strokes) { this->strokes = strokes; }
-    StrokeList get() const { return this->strokes; }
+    void set(StrokeList strokes) { this->strokes = std::move(strokes); }
+    const StrokeList& get() const noexcept { return this->strokes; }
     void setDiagnosticReport(const std::string& report) { diagnosticReport = report; }
     const std::string& getDiagnosticReport() const { return diagnosticReport; }
 };

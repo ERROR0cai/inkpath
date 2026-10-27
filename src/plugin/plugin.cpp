@@ -14,6 +14,29 @@
 #include <sstream>
 #include <chrono>
 #include <iomanip>
+#include <cmath>
+#include <climits>
+#include <cstddef>
+
+// Validate a live Inkpath userdata before accessing its native object.
+static Inkpath* checkedInkpath(lua_State* L) {
+    auto** slot = static_cast<Inkpath**>(luaL_checkudata(L, 1, LUA_INKPATH));
+    if (*slot == nullptr) {
+        luaL_error(L, "Inkpath object has already been destroyed");
+        return nullptr;
+    }
+    return *slot;
+}
+
+// Lua uses zero-based stroke indexes for this plugin's existing API.
+static size_t checkedStrokeIndex(lua_State* L, lua_Integer index, size_t count) {
+    if (index < 0 || static_cast<unsigned long long>(index) >= count) {
+        luaL_error(L, "Stroke index out of range (count=%llu)",
+                   static_cast<unsigned long long>(count));
+        return 0;
+    }
+    return static_cast<size_t>(index);
+}
 
 // Register inkpath to Lua
 static void registerInkpath(lua_State* L) {
@@ -30,8 +53,9 @@ static void registerInkpath(lua_State* L) {
     lua_pushcfunction(L, inkpath_getStroke);
     lua_setfield(L, -2, "getStroke");
     lua_pushcfunction(L, [](lua_State* state) -> int {
-        auto* obj = *reinterpret_cast<Inkpath**>(luaL_checkudata(state, 1, LUA_INKPATH));
-        lua_pushstring(state, obj->getDiagnosticReport().c_str());
+        auto* obj = checkedInkpath(state);
+        const auto& report = obj->getDiagnosticReport();
+        lua_pushlstring(state, report.data(), report.size());
         return 1;
     });
     lua_setfield(L, -2, "getDiagnosticReport");
@@ -44,6 +68,7 @@ WINEXPORT int luaopen_loadInkpath(lua_State* L) {
     printf("Entered Inkpath.");
     luaL_openlibs(L);
     registerInkpath(L);
+    lua_pushboolean(L, 1);
     return 1;
 }
 }
@@ -52,88 +77,95 @@ WINEXPORT int luaopen_loadInkpath(lua_State* L) {
 //       2 = force light strokes on dark background (invert first).
 static int cv_perform_processing_mode(const char* image_path, Inkpath* data, int mode, const inkp::InkpathConfig& cfg);
 
-// Create & return inkpath instance to Lua
+// Create & return inkpath instance to Lua.
 static int inkpath_new(lua_State* L) {
     const char* image_path = luaL_checkstring(L, 1);
-    int polarity_mode = static_cast<int>(luaL_optinteger(L, 2, 0));
+    const lua_Integer polarity_mode = luaL_optinteger(L, 2, 0);
     const char* configPath = luaL_optstring(L, 3, "");
-    if (polarity_mode < 0 || polarity_mode > 2) {
+    if (polarity_mode < 0 || polarity_mode > 2)
         return luaL_error(L, "Invalid polarity mode (expected 0, 1 or 2)");
-    }
 
-    Inkpath* object;        // Declare pointer
-    object = new Inkpath(); // Initialize pointer
-    *reinterpret_cast<Inkpath**>(lua_newuserdata(L, sizeof(Inkpath*))) =
-        object;                        // Make Lua aware of it
-    luaL_setmetatable(L, LUA_INKPATH); // Metatable magic
+    // Allocate the Lua userdata first. On failure it remains null and __gc is safe.
+    auto** slot = static_cast<Inkpath**>(lua_newuserdata(L, sizeof(Inkpath*)));
+    *slot = nullptr;
+    luaL_setmetatable(L, LUA_INKPATH);
 
-    // Never allow C++ exceptions to escape through the Lua C API.
-    // Convert processing failures to ordinary Lua errors instead.
-    std::string processingError;
-    try {
-        const inkp::InkpathConfig config = inkp::loadInkpathConfig(configPath);
-        cv_perform_processing_mode(image_path, object, polarity_mode, config);
-    } catch (const cv::Exception& e) {
-        processingError = std::string("OpenCV processing failed: ") + e.what();
-    } catch (const std::exception& e) {
-        processingError = std::string("Image processing failed: ") + e.what();
-    } catch (...) {
-        processingError = "Unknown native image processing error";
+    bool failed = false;
+    {
+        std::string error;
+        try {
+            *slot = new Inkpath();
+            const inkp::InkpathConfig config = inkp::loadInkpathConfig(configPath);
+            cv_perform_processing_mode(image_path, *slot, static_cast<int>(polarity_mode), config);
+        } catch (const cv::Exception& e) {
+            error = std::string("OpenCV processing failed: ") + e.what();
+        } catch (const std::exception& e) {
+            error = std::string("Image processing failed: ") + e.what();
+        } catch (...) {
+            error = "Unknown native image processing error";
+        }
+        if (!error.empty()) {
+            // Clean up before raising a Lua error (Lua may longjmp).
+            delete *slot;
+            *slot = nullptr;
+            lua_pushlstring(L, error.data(), error.size());
+            failed = true;
+        }
     }
-    if (!processingError.empty()) {
-        return luaL_error(L, "%s", processingError.c_str());
-    }
+    if (failed) return lua_error(L);
     std::cout << "CV Processing complete!\n";
     return 1;
 }
 
-// Get the number of strokes that Inkpath found in the image
+// Get the number of strokes that Inkpath found in the image.
 static int inkpath_getStrokeCount(lua_State* L) {
-    lua_pushinteger(
-        L, (*reinterpret_cast<Inkpath**>(luaL_checkudata(L, 1, LUA_INKPATH)))
-               ->get()
-               .size());
+    const auto& strokes = checkedInkpath(L)->get();
+    lua_pushinteger(L, static_cast<lua_Integer>(strokes.size()));
     return 1;
 }
 
-// Given an index, get the length of the stroke at that index
+// Given a zero-based index, get the length of that stroke.
 static int inkpath_getStrokeLength(lua_State* L) {
-    lua_pushinteger(
-        L, (*reinterpret_cast<Inkpath**>(luaL_checkudata(L, 1, LUA_INKPATH)))
-               ->get()[luaL_checkinteger(L, 2)]
-               .size());
+    Inkpath* obj = checkedInkpath(L);
+    lua_Integer inputIndex = luaL_checkinteger(L, 2);
+    const auto& strokes = obj->get();
+    size_t index = checkedStrokeIndex(L, inputIndex, strokes.size());
+    lua_pushinteger(L, static_cast<lua_Integer>(strokes[index].size()));
     return 1;
 }
 
-// Get the next stroke from Inkpath and push it onto the Lua Stack
+// Push x and y coordinates as two Lua arrays, preserving the existing API.
 static int inkpath_getStroke(lua_State* L) {
-    int contourIdx = luaL_checkinteger(L, 2);
+    Inkpath* obj = checkedInkpath(L);
+    lua_Integer inputIndex = luaL_checkinteger(L, 2);
     double scalingFactor = luaL_checknumber(L, 3);
+    if (!std::isfinite(scalingFactor))
+        return luaL_error(L, "Invalid scaling factor (expected finite number)");
+    const auto& strokes = obj->get();
+    size_t index = checkedStrokeIndex(L, inputIndex, strokes.size());
+    const auto& selectedStroke = strokes[index];
 
-    std::vector<cv::Point> selectedStroke =
-        (*reinterpret_cast<Inkpath**>(luaL_checkudata(L, 1, LUA_INKPATH)))
-            ->get()[contourIdx];
-
-    // Push all the X coords to the stack
-    lua_newtable(L);
-    for (int i = 0; i < selectedStroke.size(); i++) {
-        lua_pushnumber(L, selectedStroke[i].x * scalingFactor);
-        lua_rawseti(L, -2, i + 1);
+    lua_createtable(L, static_cast<int>(std::min<size_t>(selectedStroke.size(), INT_MAX)), 0);
+    for (size_t i = 0; i < selectedStroke.size(); ++i) {
+        lua_pushnumber(L, static_cast<lua_Number>(selectedStroke[i].x) * scalingFactor);
+        lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
     }
 
-    // Push all the Y coords to the stack
-    lua_newtable(L);
-    for (int i = 0; i < selectedStroke.size(); i++) {
-        lua_pushnumber(L, selectedStroke[i].y * scalingFactor);
-        lua_rawseti(L, -2, i + 1);
+    lua_createtable(L, static_cast<int>(std::min<size_t>(selectedStroke.size(), INT_MAX)), 0);
+    for (size_t i = 0; i < selectedStroke.size(); ++i) {
+        lua_pushnumber(L, static_cast<lua_Number>(selectedStroke[i].y) * scalingFactor);
+        lua_rawseti(L, -2, static_cast<lua_Integer>(i + 1));
     }
-
-    return 2; // Returning two tables
+    return 2;
 }
 
-// Free inkpath instance by Lua garbage collection
+// Release native object at most once. __gc must not throw.
 static int inkpath_delete(lua_State* L) {
-    delete *reinterpret_cast<Inkpath**>(lua_touserdata(L, 1));
+    auto** slot = static_cast<Inkpath**>(luaL_testudata(L, 1, LUA_INKPATH));
+    if (slot != nullptr && *slot != nullptr) {
+        delete *slot;
+        *slot = nullptr;
+    }
     return 0;
 }
 
